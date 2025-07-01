@@ -12,3 +12,4 @@ prices live updated from polymarket (which as a sidenote seems to have a rll dum
 4. open http://localhost:3000
 
 orders stored in local json file (data folder) so doesnt need to always be running for ur orders to save etc it just caches price data on reload etc
+set with $10000 at start. u can change this line 19 app/page.tsx if u want 
