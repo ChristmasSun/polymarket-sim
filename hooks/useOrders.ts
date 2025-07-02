@@ -134,7 +134,11 @@ export function useOrders() {
         shares,
         price,
         totalCost: shares * price,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        currentPrice: price, // Set initial current price to the purchase price
+        currentValue: shares * price, // Set initial current value
+        pnl: 0, // No P&L initially since we just bought
+        pnlPercentage: 0 // No P&L percentage initially
       };
       
       orderBook.orders.push(newOrder);
@@ -145,7 +149,7 @@ export function useOrders() {
       
       // Update summary
       const newTotalInvested = orderBook.orders.reduce((sum, order) => sum + order.totalCost, 0);
-      const newTotalCurrentValue = orderBook.orders.reduce((sum, order) => sum + (order.currentValue || 0), 0);
+      const newTotalCurrentValue = orderBook.orders.reduce((sum, order) => sum + (order.currentValue || order.totalCost), 0);
       const newTotalPnl = newTotalCurrentValue - newTotalInvested;
       const newTotalPnlPercentage = newTotalInvested > 0 ? (newTotalPnl / newTotalInvested) * 100 : 0;
       
@@ -217,7 +221,7 @@ export function useOrders() {
       
       // Update summary
       const newTotalInvested = orderBook.orders.reduce((sum, order) => sum + order.totalCost, 0);
-      const newTotalCurrentValue = orderBook.orders.reduce((sum, order) => sum + (order.currentValue || 0), 0);
+      const newTotalCurrentValue = orderBook.orders.reduce((sum, order) => sum + (order.currentValue || order.totalCost), 0);
       const newTotalPnl = newTotalCurrentValue - newTotalInvested;
       const newTotalPnlPercentage = newTotalInvested > 0 ? (newTotalPnl / newTotalInvested) * 100 : 0;
       
