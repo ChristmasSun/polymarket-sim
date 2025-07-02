@@ -250,31 +250,45 @@ export function useOrders() {
   // Update P&L calculations based on current market prices
   const updatePnl = useCallback((markets: PolymarketMarket[]) => {
     try {
+      console.log('updatePnl called with', markets.length, 'markets');
       const orderBook = getOrdersFromStorage();
+      console.log('Current orders:', orderBook.orders.length);
       let updated = false;
       
       const updatedOrders = orderBook.orders.map(order => {
-        const market = markets.find(m => m.id === order.marketId);
+        // Try to find market by different possible ID fields
+        const market = markets.find(m => 
+          m.id === order.marketId || 
+          m.conditionId === order.marketId ||
+          m.condition_id === order.marketId
+        );
+        
         if (market) {
+          console.log('Found market for order:', order.marketId, 'Market ID:', market.id, 'Outcomes:', market.outcomes);
           // Find the outcome index and get the corresponding price
           const outcomeIndex = market.outcomes.findIndex(o => o === order.outcome);
-          if (outcomeIndex !== -1 && market.outcomePrices[outcomeIndex]) {
+          console.log('Looking for outcome:', order.outcome, 'Found at index:', outcomeIndex);
+          if (outcomeIndex !== -1 && market.outcomePrices && market.outcomePrices[outcomeIndex]) {
             const currentPrice = parseFloat(market.outcomePrices[outcomeIndex]);
-            if (currentPrice !== order.currentPrice) {
-              updated = true;
-              const currentValue = order.shares * currentPrice;
-              const pnl = currentValue - order.totalCost;
-              const pnlPercentage = order.totalCost > 0 ? (pnl / order.totalCost) * 100 : 0;
-              
-              return {
-                ...order,
-                currentPrice,
-                currentValue,
-                pnl,
-                pnlPercentage
-              };
-            }
+            console.log('Current price for', order.outcome, ':', currentPrice, 'Old price:', order.currentPrice);
+            // Always update if we have a valid price (don't check if it's different)
+            updated = true;
+            const currentValue = order.shares * currentPrice;
+            const pnl = currentValue - order.totalCost;
+            const pnlPercentage = order.totalCost > 0 ? (pnl / order.totalCost) * 100 : 0;
+            
+            return {
+              ...order,
+              currentPrice,
+              currentValue,
+              pnl,
+              pnlPercentage
+            };
+          } else {
+            console.log('No valid price found for outcome:', order.outcome, 'Prices:', market.outcomePrices);
           }
+        } else {
+          console.log('No market found for order:', order.marketId, 'Available market IDs:', markets.map(m => m.id).slice(0, 5));
         }
         return order;
       });
@@ -287,7 +301,7 @@ export function useOrders() {
         
         // Update summary
         const totalInvested = updatedOrders.reduce((sum, order) => sum + order.totalCost, 0);
-        const totalCurrentValue = updatedOrders.reduce((sum, order) => sum + (order.currentValue || 0), 0);
+        const totalCurrentValue = updatedOrders.reduce((sum, order) => sum + (order.currentValue || order.totalCost), 0);
         const totalPnl = totalCurrentValue - totalInvested;
         const totalPnlPercentage = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
         
@@ -300,21 +314,17 @@ export function useOrders() {
         });
       }
       
-             const totalInvested = updatedOrders.reduce((sum, order) => sum + order.totalCost, 0);
-       const totalCurrentValue = updatedOrders.reduce((sum, order) => sum + (order.currentValue || 0), 0);
-       const totalPnl = totalCurrentValue - totalInvested;
-       
-       return {
-         success: true,
-         orderBook: { ...orderBook, orders: updatedOrders },
-         summary: {
-           totalOrders: updatedOrders.length,
-           totalInvested,
-           totalCurrentValue,
-           totalPnl,
-           totalPnlPercentage: totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0
-         }
-       };
+      return {
+        success: true,
+        orderBook: { ...orderBook, orders: updatedOrders },
+        summary: {
+          totalOrders: updatedOrders.length,
+          totalInvested: updatedOrders.reduce((sum, order) => sum + order.totalCost, 0),
+          totalCurrentValue: updatedOrders.reduce((sum, order) => sum + (order.currentValue || order.totalCost), 0),
+          totalPnl: updatedOrders.reduce((sum, order) => sum + (order.pnl || 0), 0),
+          totalPnlPercentage: updatedOrders.reduce((sum, order) => sum + (order.pnl || 0), 0) / updatedOrders.reduce((sum, order) => sum + order.totalCost, 0) * 100
+        }
+      };
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update P&L');
     }

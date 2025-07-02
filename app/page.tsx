@@ -15,6 +15,18 @@ export default function Home() {
   const [isUpdatingPnl, setIsUpdatingPnl] = useState(false);
   const { updatePnl, summary, orders, placeOrder, sellOrder } = useOrders();
 
+  // Auto-refresh P&L every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (markets.length > 0 && orders.length > 0) {
+        console.log('Auto-updating P&L...');
+        updatePnl(markets);
+      }
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
+  }, [markets, orders, updatePnl]);
+
   // Starting balance - you can adjust this
   const STARTING_BALANCE = 10000; // $10,000 starting balance
   const currentBalance = STARTING_BALANCE - summary.totalInvested;
@@ -111,15 +123,25 @@ export default function Home() {
             </div>
             <div className="flex items-center space-x-4">
               <button 
-                onClick={fetchData}
+                onClick={() => {
+                  fetchData();
+                  // Also update P&L after fetching new data
+                  setTimeout(() => {
+                    if (markets.length > 0) {
+                      updatePnl(markets);
+                    }
+                  }, 1000); // Wait 1 second for markets to load
+                }}
                 disabled={loading}
                 className="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                <span>Refresh</span>
+                <span>Refresh Data & P&L</span>
               </button>
+              
+
               
               {/* Orders Button */}
               <button
@@ -136,9 +158,10 @@ export default function Home() {
               <div className="bg-gray-700 rounded-xl p-4 min-w-[280px]">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-medium text-gray-300">Portfolio Summary</h3>
-                  {isUpdatingPnl && (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400"></div>
-                  )}
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                    <span className="text-xs text-gray-400">Auto-updating</span>
+                  </div>
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
