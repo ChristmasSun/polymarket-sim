@@ -143,10 +143,31 @@ export async function GET(request: NextRequest) {
       };
     }));
 
-    // Filter out expired markets
+    // Set default end date for markets with missing or invalid end date
+    const DEFAULT_END_DATE = '2025-12-31';
+    const allMarketsWithDefaultDate = allMarkets.map((market: any) => {
+      let endDateRaw = market.endDateIso || market.end_date_iso || '';
+      let validDate = true;
+      if (!endDateRaw) validDate = false;
+      else {
+        const d = new Date(endDateRaw);
+        if (isNaN(d.getTime())) validDate = false;
+      }
+      if (!validDate) {
+        return {
+          ...market,
+          endDateIso: DEFAULT_END_DATE,
+          end_date_iso: DEFAULT_END_DATE,
+        };
+      }
+      return market;
+    });
+
+    // Filter out expired markets, but include those with the default date
     const now = new Date();
-    const validMarkets = allMarkets.filter((market: any) => {
-      const endDate = new Date(market.endDateIso || market.end_date_iso || '');
+    const validMarkets = allMarketsWithDefaultDate.filter((market: any) => {
+      const endDateRaw = market.endDateIso || market.end_date_iso || '';
+      const endDate = new Date(endDateRaw);
       return endDate > now;
     });
 
@@ -161,6 +182,53 @@ export async function GET(request: NextRequest) {
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { 
+      status: 500,
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      }
+    });
+  }
+}
+
+// Add a debug endpoint to list all market questions and end dates (including expired)
+export async function GET_DEBUG(request: NextRequest) {
+  try {
+    const response = await fetch('https://polymarket.com/markets', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+        'Accept': 'text/html',
+      },
+      cache: 'no-store',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch Polymarket site');
+    }
+    const html = await response.text();
+    const $ = cheerio.load(html);
+    const nextDataRaw = $("script#__NEXT_DATA__").html();
+    if (!nextDataRaw) throw new Error('Could not find __NEXT_DATA__');
+    const nextData = JSON.parse(nextDataRaw);
+    const events = nextData?.props?.pageProps?.dehydratedState?.queries?.[0]?.state?.data?.events || [];
+    const allMarkets = events.flatMap((event: any) => (event.markets || []).map((market: any) => ({
+      question: market.question,
+      endDateIso: market.endDateIso,
+      slug: market.slug,
+      id: market.id,
+    })));
+    return NextResponse.json({
+      markets: allMarkets,
+      count: allMarkets.length
+    }, {
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      }
+    });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, {
       status: 500,
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
