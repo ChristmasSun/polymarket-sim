@@ -10,6 +10,37 @@ export interface OrderSummary {
   totalPnlPercentage: number;
 }
 
+const STORAGE_KEY = 'polymarket-orders';
+const STARTING_BALANCE = 10000;
+
+// Helper functions for localStorage
+const getOrdersFromStorage = (): OrderBook => {
+  if (typeof window === 'undefined') {
+    return { orders: [], lastUpdated: new Date().toISOString() };
+  }
+  
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('Error reading from localStorage:', error);
+  }
+  
+  return { orders: [], lastUpdated: new Date().toISOString() };
+};
+
+const saveOrdersToStorage = (orderBook: OrderBook) => {
+  if (typeof window === 'undefined') return;
+  
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(orderBook));
+  } catch (error) {
+    console.error('Error saving to localStorage:', error);
+  }
+};
+
 export function useOrders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [summary, setSummary] = useState<OrderSummary>({
@@ -22,15 +53,26 @@ export function useOrders() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load orders from persistent storage
-  const loadOrders = useCallback(async () => {
+  // Load orders from localStorage
+  const loadOrders = useCallback(() => {
     try {
       setLoading(true);
-      const response = await fetch('/api/orders');
-      if (!response.ok) throw new Error('Failed to load orders');
-      
-      const orderBook: OrderBook = await response.json();
+      const orderBook = getOrdersFromStorage();
       setOrders(orderBook.orders);
+      
+      // Calculate initial summary
+      const totalInvested = orderBook.orders.reduce((sum, order) => sum + order.totalCost, 0);
+      const totalCurrentValue = orderBook.orders.reduce((sum, order) => sum + (order.currentValue || 0), 0);
+      const totalPnl = totalCurrentValue - totalInvested;
+      const totalPnlPercentage = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
+      
+      setSummary({
+        totalOrders: orderBook.orders.length,
+        totalInvested,
+        totalCurrentValue,
+        totalPnl,
+        totalPnlPercentage
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load orders');
     } finally {
@@ -39,7 +81,7 @@ export function useOrders() {
   }, []);
 
   // Place a new order
-  const placeOrder = useCallback(async (
+  const placeOrder = useCallback((
     marketId: string,
     marketQuestion: string,
     outcome: string,
@@ -49,124 +91,226 @@ export function useOrders() {
   ) => {
     try {
       setLoading(true);
-      const response = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          marketId,
-          marketQuestion,
-          outcome,
-          action,
-          shares,
-          price
-        })
-      });
-
-      if (!response.ok) throw new Error('Failed to place order');
       
-      const result = await response.json();
-      if (result.success) {
-        // Reload orders to get the updated list
-        await loadOrders();
-        
-        // Update summary immediately after placing order
-        const updatedOrders = await fetch('/api/orders');
-        if (updatedOrders.ok) {
-          const orderBook: OrderBook = await updatedOrders.json();
-          const totalInvested = orderBook.orders.reduce((sum, order) => sum + order.totalCost, 0);
-          const totalOrders = orderBook.orders.length;
-          
-          // Update summary with new data (keeping current P&L values)
-          setSummary(prev => ({
-            ...prev,
-            totalOrders,
-            totalInvested
-          }));
+      const orderBook = getOrdersFromStorage();
+      const totalInvested = orderBook.orders.reduce((sum, order) => sum + order.totalCost, 0);
+      const currentBalance = STARTING_BALANCE - totalInvested;
+      const totalCost = shares * price;
+      
+      // Validate buy orders
+      if (action === 'buy') {
+        if (totalCost > currentBalance) {
+          const error = `Insufficient balance! You have $${currentBalance.toFixed(2)} but need $${totalCost.toFixed(2)} for this trade.`;
+          setError(error);
+          throw new Error(error);
         }
-        
-        return result;
-      } else {
-        throw new Error(result.error || 'Failed to place order');
       }
+      
+      // Validate sell orders
+      if (action === 'sell') {
+        const currentPosition = orderBook.orders
+          .filter(order => order.marketId === marketId && order.outcome === outcome)
+          .reduce((net, order) => {
+            if (order.action === 'buy') {
+              return net + order.shares;
+            } else {
+              return net - order.shares;
+            }
+          }, 0);
+        
+        if (currentPosition < shares) {
+          const error = `Insufficient shares! You have ${currentPosition} shares but trying to sell ${shares}.`;
+          setError(error);
+          throw new Error(error);
+        }
+      }
+      
+      const newOrder: Order = {
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        marketId,
+        marketQuestion,
+        outcome,
+        action,
+        shares,
+        price,
+        totalCost: shares * price,
+        timestamp: new Date().toISOString()
+      };
+      
+      orderBook.orders.push(newOrder);
+      orderBook.lastUpdated = new Date().toISOString();
+      
+      saveOrdersToStorage(orderBook);
+      setOrders(orderBook.orders);
+      
+      // Update summary
+      const newTotalInvested = orderBook.orders.reduce((sum, order) => sum + order.totalCost, 0);
+      const newTotalCurrentValue = orderBook.orders.reduce((sum, order) => sum + (order.currentValue || 0), 0);
+      const newTotalPnl = newTotalCurrentValue - newTotalInvested;
+      const newTotalPnlPercentage = newTotalInvested > 0 ? (newTotalPnl / newTotalInvested) * 100 : 0;
+      
+      setSummary({
+        totalOrders: orderBook.orders.length,
+        totalInvested: newTotalInvested,
+        totalCurrentValue: newTotalCurrentValue,
+        totalPnl: newTotalPnl,
+        totalPnlPercentage: newTotalPnlPercentage
+      });
+      
+      return {
+        success: true,
+        order: newOrder,
+        message: `Order placed: ${action} ${shares} shares of "${outcome}" at $${price.toFixed(3)}`
+      };
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to place order');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to place order';
+      setError(errorMessage);
       throw err;
     } finally {
       setLoading(false);
     }
-  }, [loadOrders]);
+  }, []);
 
   // Sell an existing order at current market price
-  const sellOrder = useCallback(async (
+  const sellOrder = useCallback((
     orderId: string,
     currentPrice: number,
     markets: PolymarketMarket[]
   ) => {
     try {
       setLoading(true);
-      const response = await fetch('/api/orders/sell', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId,
-          currentPrice,
-          markets
-        })
-      });
-
-      if (!response.ok) throw new Error('Failed to sell order');
       
-      const result = await response.json();
-      if (result.success) {
-        // Reload orders to get the updated list
-        await loadOrders();
-        
-        // Update summary immediately after selling
-        const updatedOrders = await fetch('/api/orders');
-        if (updatedOrders.ok) {
-          const orderBook: OrderBook = await updatedOrders.json();
-          const totalInvested = orderBook.orders.reduce((sum, order) => sum + order.totalCost, 0);
-          const totalOrders = orderBook.orders.length;
-          
-          // Update summary with new data (keeping current P&L values)
-          setSummary(prev => ({
-            ...prev,
-            totalOrders,
-            totalInvested
-          }));
-        }
-        
-        return result;
-      } else {
-        throw new Error(result.error || 'Failed to sell order');
+      const orderBook = getOrdersFromStorage();
+      const orderIndex = orderBook.orders.findIndex(order => order.id === orderId);
+      
+      if (orderIndex === -1) {
+        throw new Error('Order not found');
       }
+      
+      const order = orderBook.orders[orderIndex];
+      const currentValue = order.shares * currentPrice;
+      const pnl = currentValue - order.totalCost;
+      const pnlPercentage = order.totalCost > 0 ? (pnl / order.totalCost) * 100 : 0;
+      
+      // Create sell order
+      const sellOrder: Order = {
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        marketId: order.marketId,
+        marketQuestion: order.marketQuestion,
+        outcome: order.outcome,
+        action: 'sell',
+        shares: order.shares,
+        price: currentPrice,
+        totalCost: currentValue,
+        timestamp: new Date().toISOString(),
+        currentPrice,
+        currentValue,
+        pnl,
+        pnlPercentage
+      };
+      
+      orderBook.orders.push(sellOrder);
+      orderBook.lastUpdated = new Date().toISOString();
+      
+      saveOrdersToStorage(orderBook);
+      setOrders(orderBook.orders);
+      
+      // Update summary
+      const newTotalInvested = orderBook.orders.reduce((sum, order) => sum + order.totalCost, 0);
+      const newTotalCurrentValue = orderBook.orders.reduce((sum, order) => sum + (order.currentValue || 0), 0);
+      const newTotalPnl = newTotalCurrentValue - newTotalInvested;
+      const newTotalPnlPercentage = newTotalInvested > 0 ? (newTotalPnl / newTotalInvested) * 100 : 0;
+      
+      setSummary({
+        totalOrders: orderBook.orders.length,
+        totalInvested: newTotalInvested,
+        totalCurrentValue: newTotalCurrentValue,
+        totalPnl: newTotalPnl,
+        totalPnlPercentage: newTotalPnlPercentage
+      });
+      
+      return {
+        success: true,
+        order: sellOrder,
+        message: `Sold ${order.shares} shares of "${order.outcome}" at $${currentPrice.toFixed(3)} for a ${pnl >= 0 ? 'profit' : 'loss'} of $${Math.abs(pnl).toFixed(2)}`
+      };
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sell order');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to sell order';
+      setError(errorMessage);
       throw err;
     } finally {
       setLoading(false);
     }
-  }, [loadOrders]);
+  }, []);
 
   // Update P&L calculations based on current market prices
-  const updatePnl = useCallback(async (markets: PolymarketMarket[]) => {
+  const updatePnl = useCallback((markets: PolymarketMarket[]) => {
     try {
-      const response = await fetch('/api/orders/pnl', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markets })
-      });
-
-      if (!response.ok) throw new Error('Failed to update P&L');
+      const orderBook = getOrdersFromStorage();
+      let updated = false;
       
-      const result = await response.json();
-      if (result.success) {
-        setOrders(result.orderBook.orders);
-        setSummary(result.summary);
-        return result;
-      } else {
-        throw new Error(result.error || 'Failed to update P&L');
+      const updatedOrders = orderBook.orders.map(order => {
+        const market = markets.find(m => m.id === order.marketId);
+        if (market) {
+          // Find the outcome index and get the corresponding price
+          const outcomeIndex = market.outcomes.findIndex(o => o === order.outcome);
+          if (outcomeIndex !== -1 && market.outcomePrices[outcomeIndex]) {
+            const currentPrice = parseFloat(market.outcomePrices[outcomeIndex]);
+            if (currentPrice !== order.currentPrice) {
+              updated = true;
+              const currentValue = order.shares * currentPrice;
+              const pnl = currentValue - order.totalCost;
+              const pnlPercentage = order.totalCost > 0 ? (pnl / order.totalCost) * 100 : 0;
+              
+              return {
+                ...order,
+                currentPrice,
+                currentValue,
+                pnl,
+                pnlPercentage
+              };
+            }
+          }
+        }
+        return order;
+      });
+      
+      if (updated) {
+        orderBook.orders = updatedOrders;
+        orderBook.lastUpdated = new Date().toISOString();
+        saveOrdersToStorage(orderBook);
+        setOrders(updatedOrders);
+        
+        // Update summary
+        const totalInvested = updatedOrders.reduce((sum, order) => sum + order.totalCost, 0);
+        const totalCurrentValue = updatedOrders.reduce((sum, order) => sum + (order.currentValue || 0), 0);
+        const totalPnl = totalCurrentValue - totalInvested;
+        const totalPnlPercentage = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
+        
+        setSummary({
+          totalOrders: updatedOrders.length,
+          totalInvested,
+          totalCurrentValue,
+          totalPnl,
+          totalPnlPercentage
+        });
       }
+      
+             const totalInvested = updatedOrders.reduce((sum, order) => sum + order.totalCost, 0);
+       const totalCurrentValue = updatedOrders.reduce((sum, order) => sum + (order.currentValue || 0), 0);
+       const totalPnl = totalCurrentValue - totalInvested;
+       
+       return {
+         success: true,
+         orderBook: { ...orderBook, orders: updatedOrders },
+         summary: {
+           totalOrders: updatedOrders.length,
+           totalInvested,
+           totalCurrentValue,
+           totalPnl,
+           totalPnlPercentage: totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0
+         }
+       };
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update P&L');
     }
@@ -197,7 +341,7 @@ export function useOrders() {
   // Load orders on mount (only once)
   useEffect(() => {
     loadOrders();
-  }, []); // Empty dependency array - only run on mount
+  }, [loadOrders]);
 
   return {
     orders,
@@ -207,9 +351,9 @@ export function useOrders() {
     placeOrder,
     sellOrder,
     updatePnl,
-    loadOrders,
     getMarketOrders,
     getOutcomeOrders,
-    getNetPosition
+    getNetPosition,
+    loadOrders
   };
 } 

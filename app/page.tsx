@@ -54,7 +54,7 @@ export default function Home() {
       setLastUpdated(new Date());
       
       // Update P&L calculations with current market prices
-      await updatePnl(sortedMarkets);
+      updatePnl(sortedMarkets);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -184,11 +184,11 @@ export default function Home() {
                 orders={orders}
                 currentBalance={currentBalance}
                 placeOrder={placeOrder}
-                onOrderPlaced={async () => {
+                onOrderPlaced={() => {
                   // Refresh P&L data after order is placed (with debounce)
                   if (!isUpdatingPnl) {
                     setIsUpdatingPnl(true);
-                    await updatePnl(markets);
+                    updatePnl(markets);
                     setIsUpdatingPnl(false);
                   }
                 }}

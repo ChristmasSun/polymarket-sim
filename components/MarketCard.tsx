@@ -9,7 +9,7 @@ interface MarketCardProps {
   onOrderPlaced?: () => void;
   orders: Order[];
   currentBalance: number;
-  placeOrder: (marketId: string, marketQuestion: string, outcome: string, action: 'buy' | 'sell', shares: number, price: number) => Promise<any>;
+  placeOrder: (marketId: string, marketQuestion: string, outcome: string, action: 'buy' | 'sell', shares: number, price: number) => any;
 }
 
 export default function MarketCard({ market, onOrderPlaced, orders, currentBalance, placeOrder }: MarketCardProps) {
@@ -34,7 +34,7 @@ export default function MarketCard({ market, onOrderPlaced, orders, currentBalan
     return orders.filter(order => order.marketId === marketId && order.outcome === outcome);
   };
 
-  const handleTrade = async () => {
+  const handleTrade = () => {
     if (!selectedOutcome) return;
 
     const outcomeIndex = market.outcomes?.indexOf(selectedOutcome);
@@ -70,7 +70,7 @@ export default function MarketCard({ market, onOrderPlaced, orders, currentBalan
 
     try {
       setIsPlacingOrder(true);
-      await placeOrder(
+      placeOrder(
         marketId,
         market.question || 'Unknown Market',
         selectedOutcome,
