@@ -97,8 +97,10 @@ export function useOrders() {
       setLoading(true);
       
       const orderBook = getOrdersFromStorage();
-      const totalInvested = orderBook.orders.reduce((sum, order) => sum + order.totalCost, 0);
-      const currentBalance = STARTING_BALANCE - totalInvested;
+      const openBuys = orderBook.orders.filter(o => o.action === 'buy' && o.shares > 0);
+      const totalInvested = openBuys.reduce((sum, order) => sum + order.totalCost, 0);
+      const realizedPnl = orderBook.orders.filter(o => o.action === 'sell').reduce((sum, order) => sum + (order.pnl || 0), 0);
+      const currentBalance = STARTING_BALANCE - totalInvested + realizedPnl;
       const totalCost = shares * price;
       
       // Validate buy orders
