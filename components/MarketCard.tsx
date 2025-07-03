@@ -278,6 +278,12 @@ export default function MarketCard({ market, onOrderPlaced, orders, currentBalan
               {action === 'buy' ? 'Cost' : 'Revenue'}: $
               {(shares * (outcomeData.find(o => o.outcome === selectedOutcome)?.price || 0)).toFixed(2)}
             </div>
+            {/* To win calculation */}
+            {selectedOutcome && shares >= 1 && (
+              <div className="text-green-400">
+                To win: ${ (shares * 1).toFixed(2) }
+              </div>
+            )}
             {action === 'buy' && (
               <div className={`${(shares * (outcomeData.find(o => o.outcome === selectedOutcome)?.price || 0)) > currentBalance ? 'text-red-400' : 'text-gray-400'}`}>
                 Available: ${currentBalance.toFixed(2)}
