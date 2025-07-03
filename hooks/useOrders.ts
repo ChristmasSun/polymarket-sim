@@ -274,30 +274,32 @@ export function useOrders() {
       const orderBook = getOrdersFromStorage();
       let updated = false;
       const updatedOrders = orderBook.orders.map(order => {
-        // Try to find market by different possible ID fields
-        const market = markets.find(m => 
-          m.id === order.marketId || 
-          m.conditionId === order.marketId ||
-          m.condition_id === order.marketId
-        );
-        if (market) {
-          // Find the outcome index and get the corresponding price
-          const outcomeIndex = market.outcomes.findIndex(o => o === order.outcome);
-          if (outcomeIndex !== -1 && market.outcomePrices && market.outcomePrices[outcomeIndex]) {
-            const currentPrice = parseFloat(market.outcomePrices[outcomeIndex]);
-            updated = true;
-            const currentValue = order.shares * currentPrice;
-            const pnl = currentValue - order.totalCost;
-            const pnlPercentage = order.totalCost > 0 ? (pnl / order.totalCost) * 100 : 0;
-            return {
-              ...order,
-              currentPrice,
-              currentValue,
-              pnl,
-              pnlPercentage
-            };
+        // Only update open buy orders
+        if (order.action === 'buy' && order.shares > 0) {
+          const market = markets.find(m => 
+            m.id === order.marketId || 
+            m.conditionId === order.marketId ||
+            m.condition_id === order.marketId
+          );
+          if (market) {
+            const outcomeIndex = market.outcomes.findIndex(o => o === order.outcome);
+            if (outcomeIndex !== -1 && market.outcomePrices && market.outcomePrices[outcomeIndex]) {
+              const currentPrice = parseFloat(market.outcomePrices[outcomeIndex]);
+              updated = true;
+              const currentValue = order.shares * currentPrice;
+              const pnl = currentValue - order.totalCost;
+              const pnlPercentage = order.totalCost > 0 ? (pnl / order.totalCost) * 100 : 0;
+              return {
+                ...order,
+                currentPrice,
+                currentValue,
+                pnl,
+                pnlPercentage
+              };
+            }
           }
         }
+        // For sell orders or closed buys, do not update
         return order;
       });
       if (updated) {

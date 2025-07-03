@@ -226,17 +226,15 @@ export default function OrdersModal({ orders, isOpen, onClose, onSellOrder, mark
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                           <div className="text-gray-400 text-sm">Current Price</div>
-                          <div className="text-white font-semibold">${order.currentPrice.toFixed(3)}</div>
+                          <div className="text-white font-semibold">${order.currentPrice !== undefined ? order.currentPrice.toFixed(3) : (order.action === 'sell' ? order.price.toFixed(3) : '')}</div>
                         </div>
                         <div>
                           <div className="text-gray-400 text-sm">Current Value</div>
-                          <div className="text-white font-semibold">${order.currentValue?.toFixed(2)}</div>
+                          <div className="text-white font-semibold">${order.currentValue !== undefined ? order.currentValue.toFixed(2) : (order.action === 'sell' ? (order.shares * order.price).toFixed(2) : '')}</div>
                         </div>
                         <div>
                           <div className="text-gray-400 text-sm">P&L</div>
-                          <div className={`font-semibold ${order.pnl && order.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            ${order.pnl?.toFixed(2)} ({order.pnlPercentage?.toFixed(1)}%)
-                          </div>
+                          <div className={`font-semibold ${order.pnl && order.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>${order.action === 'sell' ? order.pnl?.toFixed(2) : order.pnl?.toFixed(2)}{order.action === 'sell' ? ' (locked)' : ` (${order.pnlPercentage?.toFixed(1)}%)`}</div>
                         </div>
                       </div>
                     </div>
