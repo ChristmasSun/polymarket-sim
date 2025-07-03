@@ -8,6 +8,7 @@ export interface OrderSummary {
   totalCurrentValue: number;
   totalPnl: number;
   totalPnlPercentage: number;
+  totalSellProceeds: number;
 }
 
 const STORAGE_KEY = 'polymarket-orders';
@@ -48,7 +49,8 @@ export function useOrders() {
     totalInvested: 0,
     totalCurrentValue: 0,
     totalPnl: 0,
-    totalPnlPercentage: 0
+    totalPnlPercentage: 0,
+    totalSellProceeds: 0
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +71,8 @@ export function useOrders() {
         totalInvested,
         totalCurrentValue,
         totalPnl,
-        totalPnlPercentage
+        totalPnlPercentage,
+        totalSellProceeds: 0
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load orders');
@@ -158,7 +161,8 @@ export function useOrders() {
         totalInvested: newTotalInvested,
         totalCurrentValue: newTotalCurrentValue,
         totalPnl: newTotalPnl,
-        totalPnlPercentage: newTotalPnlPercentage
+        totalPnlPercentage: newTotalPnlPercentage,
+        totalSellProceeds: 0
       });
       
       return {
@@ -247,7 +251,7 @@ export function useOrders() {
         totalCurrentValue,
         totalPnl,
         totalPnlPercentage,
-        // availableBalance: STARTING_BALANCE - totalInvested + totalSellProceeds (if you want to show it here)
+        totalSellProceeds
       });
       return {
         success: true,
@@ -316,7 +320,8 @@ export function useOrders() {
         totalInvested,
         totalCurrentValue,
         totalPnl,
-        totalPnlPercentage
+        totalPnlPercentage,
+        totalSellProceeds
       });
       return {
         success: true,
@@ -326,7 +331,8 @@ export function useOrders() {
           totalInvested,
           totalCurrentValue,
           totalPnl,
-          totalPnlPercentage
+          totalPnlPercentage,
+          totalSellProceeds
         }
       };
     } catch (err) {

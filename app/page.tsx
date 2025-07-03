@@ -30,7 +30,7 @@ export default function Home() {
 
   // Starting balance - you can adjust this
   const STARTING_BALANCE = 10000; // $10,000 starting balance
-  const currentBalance = STARTING_BALANCE - summary.totalInvested;
+  const currentBalance = STARTING_BALANCE - summary.totalInvested + (summary.totalSellProceeds || 0);
   const totalPortfolioValue = currentBalance + summary.totalCurrentValue;
 
   const fetchData = async () => {
