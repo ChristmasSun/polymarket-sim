@@ -59,15 +59,13 @@ export function useOrders() {
       setLoading(true);
       const orderBook = getOrdersFromStorage();
       setOrders(orderBook.orders);
-      
-      // Calculate initial summary
-      const totalInvested = orderBook.orders.reduce((sum, order) => sum + order.totalCost, 0);
-      const totalCurrentValue = orderBook.orders.reduce((sum, order) => sum + (order.currentValue || 0), 0);
+      // Calculate initial summary (only count buys for invested)
+      const totalInvested = orderBook.orders.filter(o => o.action === 'buy').reduce((sum, order) => sum + order.totalCost, 0);
+      const totalCurrentValue = orderBook.orders.filter(o => o.action === 'buy').reduce((sum, order) => sum + (order.currentValue || 0), 0);
       const totalPnl = totalCurrentValue - totalInvested;
       const totalPnlPercentage = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
-      
       setSummary({
-        totalOrders: orderBook.orders.length,
+        totalOrders: orderBook.orders.filter(o => o.action === 'buy' && o.shares > 0).length,
         totalInvested,
         totalCurrentValue,
         totalPnl,
@@ -145,16 +143,18 @@ export function useOrders() {
       orderBook.lastUpdated = new Date().toISOString();
       
       saveOrdersToStorage(orderBook);
-      setOrders(orderBook.orders);
+      // Always reload from storage to ensure state is up to date
+      const freshOrderBook = getOrdersFromStorage();
+      setOrders(freshOrderBook.orders);
       
       // Update summary
-      const newTotalInvested = orderBook.orders.reduce((sum, order) => sum + order.totalCost, 0);
-      const newTotalCurrentValue = orderBook.orders.reduce((sum, order) => sum + (order.currentValue || order.totalCost), 0);
+      const newTotalInvested = freshOrderBook.orders.filter(o => o.action === 'buy').reduce((sum, order) => sum + order.totalCost, 0);
+      const newTotalCurrentValue = freshOrderBook.orders.filter(o => o.action === 'buy').reduce((sum, order) => sum + (order.currentValue || 0), 0);
       const newTotalPnl = newTotalCurrentValue - newTotalInvested;
       const newTotalPnlPercentage = newTotalInvested > 0 ? (newTotalPnl / newTotalInvested) * 100 : 0;
       
       setSummary({
-        totalOrders: orderBook.orders.length,
+        totalOrders: freshOrderBook.orders.filter(o => o.action === 'buy' && o.shares > 0).length,
         totalInvested: newTotalInvested,
         totalCurrentValue: newTotalCurrentValue,
         totalPnl: newTotalPnl,
@@ -179,23 +179,26 @@ export function useOrders() {
   const sellOrder = useCallback((
     orderId: string,
     currentPrice: number,
-    markets: PolymarketMarket[]
+    markets: PolymarketMarket[],
+    sharesToSell: number
   ) => {
     try {
       setLoading(true);
-      
       const orderBook = getOrdersFromStorage();
       const orderIndex = orderBook.orders.findIndex(order => order.id === orderId);
-      
       if (orderIndex === -1) {
         throw new Error('Order not found');
       }
-      
       const order = orderBook.orders[orderIndex];
-      const currentValue = order.shares * currentPrice;
-      const pnl = currentValue - order.totalCost;
-      const pnlPercentage = order.totalCost > 0 ? (pnl / order.totalCost) * 100 : 0;
-      
+      if (sharesToSell > order.shares) {
+        throw new Error('Cannot sell more shares than owned');
+      }
+      // Calculate proportional cost for partial sell
+      const costPerShare = order.totalCost / order.shares;
+      const sellCost = costPerShare * sharesToSell;
+      const currentValue = sharesToSell * currentPrice;
+      const pnl = currentValue - sellCost;
+      const pnlPercentage = sellCost > 0 ? (pnl / sellCost) * 100 : 0;
       // Create sell order
       const sellOrder: Order = {
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -203,40 +206,53 @@ export function useOrders() {
         marketQuestion: order.marketQuestion,
         outcome: order.outcome,
         action: 'sell',
-        shares: order.shares,
+        shares: sharesToSell,
         price: currentPrice,
-        totalCost: currentValue,
+        totalCost: currentValue, // Proceeds from sale
         timestamp: new Date().toISOString(),
         currentPrice,
         currentValue,
         pnl,
         pnlPercentage
       };
-      
       orderBook.orders.push(sellOrder);
+      // Update or remove the original buy order
+      if (sharesToSell === order.shares) {
+        // Remove the buy order if all shares sold
+        orderBook.orders.splice(orderIndex, 1);
+      } else {
+        // Reduce the buy order's shares and totalCost by the cost basis of shares sold
+        orderBook.orders[orderIndex] = {
+          ...order,
+          shares: order.shares - sharesToSell,
+          totalCost: order.totalCost - sellCost
+        };
+      }
       orderBook.lastUpdated = new Date().toISOString();
-      
       saveOrdersToStorage(orderBook);
-      setOrders(orderBook.orders);
-      
+      // Always reload from storage to ensure state is up to date
+      const freshOrderBook = getOrdersFromStorage();
+      setOrders(freshOrderBook.orders);
       // Update summary
-      const newTotalInvested = orderBook.orders.reduce((sum, order) => sum + order.totalCost, 0);
-      const newTotalCurrentValue = orderBook.orders.reduce((sum, order) => sum + (order.currentValue || order.totalCost), 0);
-      const newTotalPnl = newTotalCurrentValue - newTotalInvested;
-      const newTotalPnlPercentage = newTotalInvested > 0 ? (newTotalPnl / newTotalInvested) * 100 : 0;
-      
+      // Only count open buy orders for invested/current value, and add up all sell proceeds for available balance
+      const openBuys = freshOrderBook.orders.filter(o => o.action === 'buy' && o.shares > 0);
+      const totalInvested = openBuys.reduce((sum, order) => sum + order.totalCost, 0);
+      const totalCurrentValue = openBuys.reduce((sum, order) => sum + (order.currentValue || 0), 0);
+      const totalSellProceeds = freshOrderBook.orders.filter(o => o.action === 'sell').reduce((sum, order) => sum + order.totalCost, 0);
+      const totalPnl = totalCurrentValue - totalInvested;
+      const totalPnlPercentage = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
       setSummary({
-        totalOrders: orderBook.orders.length,
-        totalInvested: newTotalInvested,
-        totalCurrentValue: newTotalCurrentValue,
-        totalPnl: newTotalPnl,
-        totalPnlPercentage: newTotalPnlPercentage
+        totalOrders: openBuys.length,
+        totalInvested,
+        totalCurrentValue,
+        totalPnl,
+        totalPnlPercentage,
+        // availableBalance: STARTING_BALANCE - totalInvested + totalSellProceeds (if you want to show it here)
       });
-      
       return {
         success: true,
         order: sellOrder,
-        message: `Sold ${order.shares} shares of "${order.outcome}" at $${currentPrice.toFixed(3)} for a ${pnl >= 0 ? 'profit' : 'loss'} of $${Math.abs(pnl).toFixed(2)}`
+        message: `Sold ${sharesToSell} shares of "${order.outcome}" at $${currentPrice.toFixed(3)} for a ${pnl >= 0 ? 'profit' : 'loss'} of $${Math.abs(pnl).toFixed(2)}`
       };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to sell order';
@@ -250,11 +266,9 @@ export function useOrders() {
   // Update P&L calculations based on current market prices
   const updatePnl = useCallback((markets: PolymarketMarket[]) => {
     try {
-      console.log('updatePnl called with', markets.length, 'markets');
+      // Always reload latest orders from storage
       const orderBook = getOrdersFromStorage();
-      console.log('Current orders:', orderBook.orders.length);
       let updated = false;
-      
       const updatedOrders = orderBook.orders.map(order => {
         // Try to find market by different possible ID fields
         const market = markets.find(m => 
@@ -262,21 +276,15 @@ export function useOrders() {
           m.conditionId === order.marketId ||
           m.condition_id === order.marketId
         );
-        
         if (market) {
-          console.log('Found market for order:', order.marketId, 'Market ID:', market.id, 'Outcomes:', market.outcomes);
           // Find the outcome index and get the corresponding price
           const outcomeIndex = market.outcomes.findIndex(o => o === order.outcome);
-          console.log('Looking for outcome:', order.outcome, 'Found at index:', outcomeIndex);
           if (outcomeIndex !== -1 && market.outcomePrices && market.outcomePrices[outcomeIndex]) {
             const currentPrice = parseFloat(market.outcomePrices[outcomeIndex]);
-            console.log('Current price for', order.outcome, ':', currentPrice, 'Old price:', order.currentPrice);
-            // Always update if we have a valid price (don't check if it's different)
             updated = true;
             const currentValue = order.shares * currentPrice;
             const pnl = currentValue - order.totalCost;
             const pnlPercentage = order.totalCost > 0 ? (pnl / order.totalCost) * 100 : 0;
-            
             return {
               ...order,
               currentPrice,
@@ -284,45 +292,41 @@ export function useOrders() {
               pnl,
               pnlPercentage
             };
-          } else {
-            console.log('No valid price found for outcome:', order.outcome, 'Prices:', market.outcomePrices);
           }
-        } else {
-          console.log('No market found for order:', order.marketId, 'Available market IDs:', markets.map(m => m.id).slice(0, 5));
         }
         return order;
       });
-      
       if (updated) {
         orderBook.orders = updatedOrders;
         orderBook.lastUpdated = new Date().toISOString();
         saveOrdersToStorage(orderBook);
-        setOrders(updatedOrders);
-        
-        // Update summary
-        const totalInvested = updatedOrders.reduce((sum, order) => sum + order.totalCost, 0);
-        const totalCurrentValue = updatedOrders.reduce((sum, order) => sum + (order.currentValue || order.totalCost), 0);
-        const totalPnl = totalCurrentValue - totalInvested;
-        const totalPnlPercentage = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
-        
-        setSummary({
-          totalOrders: updatedOrders.length,
+      }
+      // Always reload from storage to ensure state is up to date
+      const freshOrderBook = getOrdersFromStorage();
+      setOrders(freshOrderBook.orders);
+      // Update summary from latest orders
+      const openBuys = freshOrderBook.orders.filter(o => o.action === 'buy' && o.shares > 0);
+      const totalInvested = openBuys.reduce((sum, order) => sum + order.totalCost, 0);
+      const totalCurrentValue = openBuys.reduce((sum, order) => sum + (order.currentValue || 0), 0);
+      const totalSellProceeds = freshOrderBook.orders.filter(o => o.action === 'sell').reduce((sum, order) => sum + order.totalCost, 0);
+      const totalPnl = totalCurrentValue - totalInvested;
+      const totalPnlPercentage = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
+      setSummary({
+        totalOrders: openBuys.length,
+        totalInvested,
+        totalCurrentValue,
+        totalPnl,
+        totalPnlPercentage
+      });
+      return {
+        success: true,
+        orderBook: { ...freshOrderBook, orders: openBuys },
+        summary: {
+          totalOrders: openBuys.length,
           totalInvested,
           totalCurrentValue,
           totalPnl,
           totalPnlPercentage
-        });
-      }
-      
-      return {
-        success: true,
-        orderBook: { ...orderBook, orders: updatedOrders },
-        summary: {
-          totalOrders: updatedOrders.length,
-          totalInvested: updatedOrders.reduce((sum, order) => sum + order.totalCost, 0),
-          totalCurrentValue: updatedOrders.reduce((sum, order) => sum + (order.currentValue || order.totalCost), 0),
-          totalPnl: updatedOrders.reduce((sum, order) => sum + (order.pnl || 0), 0),
-          totalPnlPercentage: updatedOrders.reduce((sum, order) => sum + (order.pnl || 0), 0) / updatedOrders.reduce((sum, order) => sum + order.totalCost, 0) * 100
         }
       };
     } catch (err) {
@@ -342,14 +346,11 @@ export function useOrders() {
 
   // Calculate net position for a market outcome
   const getNetPosition = useCallback((marketId: string, outcome: string) => {
+    // Only sum open buy orders (shares > 0)
     const outcomeOrders = getOutcomeOrders(marketId, outcome);
-    return outcomeOrders.reduce((net, order) => {
-      if (order.action === 'buy') {
-        return net + order.shares;
-      } else {
-        return net - order.shares;
-      }
-    }, 0);
+    return outcomeOrders
+      .filter(order => order.action === 'buy' && order.shares > 0)
+      .reduce((net, order) => net + order.shares, 0);
   }, [getOutcomeOrders]);
 
   // Load orders on mount (only once)

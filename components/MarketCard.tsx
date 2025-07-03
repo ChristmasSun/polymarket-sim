@@ -10,9 +10,10 @@ interface MarketCardProps {
   orders: Order[];
   currentBalance: number;
   placeOrder: (marketId: string, marketQuestion: string, outcome: string, action: 'buy' | 'sell', shares: number, price: number) => any;
+  sellOrder: (marketId: string, outcome: string, shares: number, price: number) => Promise<any>;
 }
 
-export default function MarketCard({ market, onOrderPlaced, orders, currentBalance, placeOrder }: MarketCardProps) {
+export default function MarketCard({ market, onOrderPlaced, orders, currentBalance, placeOrder, sellOrder }: MarketCardProps) {
   const [selectedOutcome, setSelectedOutcome] = useState<string>('');
   const [shares, setShares] = useState<number>(1);
   const [action, setAction] = useState<'buy' | 'sell'>('buy');
@@ -20,37 +21,27 @@ export default function MarketCard({ market, onOrderPlaced, orders, currentBalan
 
   // Helper functions (previously from useOrders hook)
   const getNetPosition = (marketId: string, outcome: string) => {
-    const outcomeOrders = orders.filter(order => order.marketId === marketId && order.outcome === outcome);
-    return outcomeOrders.reduce((net, order) => {
-      if (order.action === 'buy') {
-        return net + order.shares;
-      } else {
-        return net - order.shares;
-      }
-    }, 0);
+    // Only sum open buy orders (shares > 0)
+    const outcomeOrders = orders.filter(order => order.marketId === marketId && order.outcome === outcome && order.action === 'buy' && order.shares > 0);
+    return outcomeOrders.reduce((net, order) => net + order.shares, 0);
   };
 
   const getOutcomeOrders = (marketId: string, outcome: string) => {
     return orders.filter(order => order.marketId === marketId && order.outcome === outcome);
   };
 
-  const handleTrade = () => {
+  const handleTrade = async () => {
     if (!selectedOutcome) return;
-
     const outcomeIndex = market.outcomes?.indexOf(selectedOutcome);
     if (outcomeIndex === -1 || !market.outcomePrices) return;
-
     const price = parseFloat(market.outcomePrices[outcomeIndex]);
     const marketId = market.conditionId || market.id;
-    
     if (!marketId) {
       alert('Invalid market ID');
       return;
     }
-
     // Calculate total cost for this trade
     const totalCost = shares * price;
-
     // Validate balance for buy orders
     if (action === 'buy') {
       if (totalCost > currentBalance) {
@@ -58,7 +49,6 @@ export default function MarketCard({ market, onOrderPlaced, orders, currentBalan
         return;
       }
     }
-
     // Validate position for sell orders
     if (action === 'sell') {
       const currentPosition = getNetPosition(marketId, selectedOutcome);
@@ -67,22 +57,28 @@ export default function MarketCard({ market, onOrderPlaced, orders, currentBalan
         return;
       }
     }
-
     try {
       setIsPlacingOrder(true);
-      placeOrder(
-        marketId,
-        market.question || 'Unknown Market',
-        selectedOutcome,
-        action,
-        shares,
-        price
-      );
-      
+      if (action === 'buy') {
+        placeOrder(
+          marketId,
+          market.question || 'Unknown Market',
+          selectedOutcome,
+          action,
+          shares,
+          price
+        );
+      } else {
+        // Use the real sellOrder handler
+        await sellOrder(marketId, selectedOutcome, shares, price);
+      }
+      // Always update summary after trade
+      if (onOrderPlaced) {
+        await onOrderPlaced();
+      }
       // Reset form
       setSelectedOutcome('');
       setShares(1);
-      
       // Show success feedback
       const button = document.querySelector(`[data-market="${marketId}"] button`);
       if (button) {
@@ -93,11 +89,6 @@ export default function MarketCard({ market, onOrderPlaced, orders, currentBalan
           button.textContent = originalText;
           button.classList.remove('bg-green-600');
         }, 2000);
-      }
-      
-      // Notify parent component that an order was placed
-      if (onOrderPlaced) {
-        onOrderPlaced();
       }
     } catch (error) {
       console.error('Trade failed:', error);
@@ -197,9 +188,9 @@ export default function MarketCard({ market, onOrderPlaced, orders, currentBalan
                   <span className="text-gray-400">{probability.toFixed(1)}%</span>
                 </div>
                 
-                {position !== 0 && (
-                  <span className={`font-medium ${position > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {position > 0 ? 'Long' : 'Short'} {Math.abs(position)} shares
+                {position !== 0 && !isNaN(position) && (
+                  <span className={`font-medium text-green-400`}>
+                    Long {position} shares
                   </span>
                 )}
               </div>
@@ -278,11 +269,17 @@ export default function MarketCard({ market, onOrderPlaced, orders, currentBalan
               {action === 'buy' ? 'Cost' : 'Revenue'}: $
               {(shares * (outcomeData.find(o => o.outcome === selectedOutcome)?.price || 0)).toFixed(2)}
             </div>
-            {/* To win calculation */}
+            {/* To win or Revenue calculation */}
             {selectedOutcome && shares >= 1 && (
-              <div className="text-green-400">
-                To win: ${ (shares * 1).toFixed(2) }
-              </div>
+              action === 'buy' ? (
+                <div className="text-green-400">
+                  To win: ${(shares * 1).toFixed(2)}
+                </div>
+              ) : (
+                <div className="text-blue-400">
+                  Revenue: ${(shares * (outcomeData.find(o => o.outcome === selectedOutcome)?.price || 0)).toFixed(2)}
+                </div>
+              )
             )}
             {action === 'buy' && (
               <div className={`${(shares * (outcomeData.find(o => o.outcome === selectedOutcome)?.price || 0)) > currentBalance ? 'text-red-400' : 'text-gray-400'}`}>

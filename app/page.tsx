@@ -12,6 +12,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [showOrdersModal, setShowOrdersModal] = useState(false);
+  const [showOrderHistoryModal, setShowOrderHistoryModal] = useState(false);
   const [isUpdatingPnl, setIsUpdatingPnl] = useState(false);
   const { updatePnl, summary, orders, placeOrder, sellOrder } = useOrders();
 
@@ -151,7 +152,34 @@ export default function Home() {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>
-                <span>Orders ({orders.length})</span>
+                <span>Orders ({orders.filter(order => order.action === 'buy' && order.shares > 0).length})</span>
+              </button>
+              
+              {/* Order History Button */}
+              <button
+                onClick={() => setShowOrderHistoryModal(true)}
+                className="px-4 py-2 bg-gray-600 text-white rounded-xl hover:bg-gray-700 flex items-center space-x-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M3 12h18M3 17h18" />
+                </svg>
+                <span>Order History</span>
+              </button>
+              
+              {/* Reset Portfolio Button */}
+              <button
+                onClick={() => {
+                  if (window.confirm('Warning: This will fully reset your portfolio and wipe all site data. Are you sure?')) {
+                    localStorage.clear();
+                    window.location.reload();
+                  }
+                }}
+                className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 flex items-center space-x-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                <span>Reset Portfolio</span>
               </button>
               
               {/* Portfolio Summary */}
@@ -207,6 +235,15 @@ export default function Home() {
                 orders={orders}
                 currentBalance={currentBalance}
                 placeOrder={placeOrder}
+                sellOrder={async (marketId, outcome, shares, price) => {
+                  // Find the matching open buy order for this market/outcome
+                  const openBuyOrder = orders.find(o => o.marketId === marketId && o.outcome === outcome && o.action === 'buy' && o.shares > 0);
+                  if (!openBuyOrder) {
+                    alert('No open buy order found for this outcome.');
+                    return { success: false };
+                  }
+                  return await sellOrder(openBuyOrder.id, price, markets, shares);
+                }}
                 onOrderPlaced={() => {
                   // Refresh P&L data after order is placed (with debounce)
                   if (!isUpdatingPnl) {
@@ -226,11 +263,11 @@ export default function Home() {
         orders={orders}
         isOpen={showOrdersModal}
         onClose={() => setShowOrdersModal(false)}
-        onSellOrder={async (orderId, currentPrice, markets) => {
+        onSellOrder={async (orderId, currentPrice, markets, shares) => {
           try {
-            const result = await sellOrder(orderId, currentPrice, markets);
+            // Always use the same sell logic as MarketCard
+            const result = await sellOrder(orderId, currentPrice, markets, shares);
             if (result.success) {
-              // Refresh P&L data after selling
               if (!isUpdatingPnl) {
                 setIsUpdatingPnl(true);
                 await updatePnl(markets);
@@ -244,6 +281,18 @@ export default function Home() {
           }
         }}
         markets={markets}
+        historyMode={false}
+      />
+
+      {/* Order History Modal (shows all orders, no sell actions) */}
+      <OrdersModal
+        orders={[...orders].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())}
+        isOpen={showOrderHistoryModal}
+        onClose={() => setShowOrderHistoryModal(false)}
+        markets={markets}
+        // No onSellOrder prop, disables sell actions
+        title="Order History"
+        historyMode={true}
       />
     </div>
   );

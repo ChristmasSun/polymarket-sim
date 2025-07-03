@@ -8,12 +8,15 @@ interface OrdersModalProps {
   orders: Order[];
   isOpen: boolean;
   onClose: () => void;
-  onSellOrder?: (orderId: string, currentPrice: number, markets: PolymarketMarket[]) => Promise<any>;
+  onSellOrder?: (orderId: string, currentPrice: number, markets: PolymarketMarket[], shares: number) => Promise<any>;
   markets?: PolymarketMarket[];
+  title?: string;
+  historyMode?: boolean;
 }
 
-export default function OrdersModal({ orders, isOpen, onClose, onSellOrder, markets }: OrdersModalProps) {
+export default function OrdersModal({ orders, isOpen, onClose, onSellOrder, markets, title, historyMode }: OrdersModalProps) {
   const [sellingOrderId, setSellingOrderId] = useState<string | null>(null);
+  const [sharesToSell, setSharesToSell] = useState<{ [orderId: string]: number }>({});
   if (!isOpen) return null;
 
   const formatDate = (dateString: string) => {
@@ -32,20 +35,31 @@ export default function OrdersModal({ orders, isOpen, onClose, onSellOrder, mark
   };
 
   const getTotalPnl = () => {
-    return orders.reduce((sum, order) => sum + (order.pnl || 0), 0);
+    if (historyMode) {
+      return orders.reduce((sum, order) => sum + (order.pnl || 0), 0);
+    }
+    return orders.filter(o => o.action === 'buy' && o.shares > 0).reduce((sum, order) => sum + (order.pnl || 0), 0);
   };
 
   const getTotalInvested = () => {
-    return orders.reduce((sum, order) => sum + order.totalCost, 0);
+    if (historyMode) {
+      return orders.reduce((sum, order) => sum + order.totalCost, 0);
+    }
+    return orders.filter(o => o.action === 'buy' && o.shares > 0).reduce((sum, order) => sum + order.totalCost, 0);
   };
 
   const getTotalCurrentValue = () => {
-    return orders.reduce((sum, order) => sum + (order.currentValue || 0), 0);
+    if (historyMode) {
+      return orders.reduce((sum, order) => sum + (order.currentValue || 0), 0);
+    }
+    return orders.filter(o => o.action === 'buy' && o.shares > 0).reduce((sum, order) => sum + (order.currentValue || 0), 0);
   };
 
   const handleSellOrder = async (order: Order) => {
     if (!onSellOrder || !markets) return;
     
+    let shares = sharesToSell[order.id];
+    if (!shares || isNaN(shares) || shares < 1) shares = order.shares;
     try {
       setSellingOrderId(order.id);
       
@@ -65,18 +79,19 @@ export default function OrdersModal({ orders, isOpen, onClose, onSellOrder, mark
       const currentPrice = parseFloat(market.outcomePrices[outcomeIndex]);
       
       // Confirm the sale
+      const pnl = ((currentPrice - order.price) * shares);
       const confirmed = window.confirm(
-        `Sell ${order.shares} shares of "${order.outcome}" at current price $${currentPrice.toFixed(3)}?\n\n` +
+        `Sell ${shares} shares of "${order.outcome}" at current price $${currentPrice.toFixed(3)}?\n\n` +
         `Buy Price: $${order.price.toFixed(3)}\n` +
         `Current Price: $${currentPrice.toFixed(3)}\n` +
-        `P&L: $${((currentPrice - order.price) * order.shares).toFixed(2)}`
+        `P&L: $${isNaN(pnl) ? '0.00' : pnl.toFixed(2)}`
       );
       
       if (!confirmed) return;
       
-      const result = await onSellOrder(order.id, currentPrice, markets);
+      const result = await onSellOrder(order.id, currentPrice, markets, shares);
       if (result.success) {
-        alert(result.message);
+        alert(result.message.replace('undefined', shares.toString()).replace('NaN', '0.00'));
       }
     } catch (error) {
       console.error('Error selling order:', error);
@@ -86,12 +101,16 @@ export default function OrdersModal({ orders, isOpen, onClose, onSellOrder, mark
     }
   };
 
+  const displayOrders = historyMode
+    ? orders // all orders, most recent first (should be sorted by parent)
+    : orders.filter(order => order.action === 'buy' && order.shares > 0);
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-900 rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
         {/* Header */}
         <div className="flex justify-between items-center p-6 border-b border-gray-700">
-          <h2 className="text-2xl font-bold text-white">Order History</h2>
+          <h2 className="text-2xl font-bold text-white">{title || (onSellOrder ? 'Order History' : 'Order History')}</h2>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-white transition-colors"
@@ -107,7 +126,7 @@ export default function OrdersModal({ orders, isOpen, onClose, onSellOrder, mark
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="bg-gray-800 rounded-xl p-4">
               <div className="text-gray-400 text-sm">Total Orders</div>
-              <div className="text-white text-2xl font-bold">{orders.length}</div>
+              <div className="text-white text-2xl font-bold">{displayOrders.length}</div>
             </div>
             <div className="bg-gray-800 rounded-xl p-4">
               <div className="text-gray-400 text-sm">Total Invested</div>
@@ -128,13 +147,13 @@ export default function OrdersModal({ orders, isOpen, onClose, onSellOrder, mark
 
         {/* Orders List */}
         <div className="overflow-y-auto max-h-[60vh]">
-          {orders.length === 0 ? (
+          {displayOrders.length === 0 ? (
             <div className="p-6 text-center text-gray-400">
-              No orders yet. Place your first trade to see it here!
+              {historyMode ? 'No order history yet.' : 'No open positions. Place your first trade to see it here!'}
             </div>
           ) : (
             <div className="p-6 space-y-4">
-              {orders.map((order) => (
+              {displayOrders.map((order) => (
                 <div key={order.id} className="bg-gray-800 rounded-xl p-4 border border-gray-700">
                   <div className="flex justify-between items-start mb-3">
                     <div>
@@ -154,13 +173,35 @@ export default function OrdersModal({ orders, isOpen, onClose, onSellOrder, mark
                         {order.action.toUpperCase()}
                       </div>
                       {order.action === 'buy' && onSellOrder && (
-                        <button
-                          onClick={() => handleSellOrder(order)}
-                          disabled={sellingOrderId === order.id}
-                          className="px-3 py-1 bg-red-600 text-white rounded-full text-sm font-medium hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
-                        >
-                          {sellingOrderId === order.id ? 'Selling...' : 'Sell'}
-                        </button>
+                        <>
+                          <input
+                            type="number"
+                            min={1}
+                            max={order.shares}
+                            value={sharesToSell[order.id] === undefined ? order.shares : sharesToSell[order.id] === 0 ? '' : sharesToSell[order.id]}
+                            onChange={e => {
+                              const val = e.target.value;
+                              if (val === '' || val === '0') {
+                                setSharesToSell(s => ({ ...s, [order.id]: 0 }));
+                              } else {
+                                const num = parseInt(val);
+                                if (!isNaN(num) && num > 0 && num <= order.shares) {
+                                  setSharesToSell(s => ({ ...s, [order.id]: num }));
+                                }
+                              }
+                            }}
+                            className="w-20 px-2 py-1 rounded-xl border border-gray-600 bg-gray-700 text-white text-sm mr-2"
+                            style={{ width: 60 }}
+                            aria-label="Shares to sell"
+                          />
+                          <button
+                            onClick={() => handleSellOrder(order)}
+                            disabled={sellingOrderId === order.id || !sharesToSell[order.id] || sharesToSell[order.id] < 1 || sharesToSell[order.id] > order.shares}
+                            className="px-3 py-1 bg-red-600 text-white rounded-full text-sm font-medium hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+                          >
+                            {sellingOrderId === order.id ? 'Selling...' : 'Sell'}
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -176,7 +217,7 @@ export default function OrdersModal({ orders, isOpen, onClose, onSellOrder, mark
                     </div>
                     <div>
                       <div className="text-gray-400 text-sm">Total Cost</div>
-                      <div className="text-white font-semibold">${order.totalCost.toFixed(2)}</div>
+                      <div className="text-white font-semibold">${order.totalCost ? order.totalCost.toFixed(2) : '0.00'}</div>
                     </div>
                   </div>
 
