@@ -248,14 +248,24 @@ export default function MarketCard({ market, onOrderPlaced, orders, currentBalan
             <input
               type="number"
               min="1"
-              value={shares}
-              onChange={(e) => setShares(Math.max(1, parseInt(e.target.value) || 1))}
+              value={shares === 0 ? '' : shares}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === '' || val === '0') {
+                  setShares(0);
+                } else {
+                  const num = parseInt(val);
+                  if (!isNaN(num) && num > 0) {
+                    setShares(num);
+                  }
+                }
+              }}
               className="flex-1 px-3 py-2 border border-gray-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-white"
               placeholder="Shares"
             />
             <button
               onClick={handleTrade}
-              disabled={isPlacingOrder || (action === 'buy' && (shares * (outcomeData.find(o => o.outcome === selectedOutcome)?.price || 0)) > currentBalance) || (action === 'sell' && getNetPosition(market.conditionId || market.id || '', selectedOutcome) < shares)}
+              disabled={isPlacingOrder || shares < 1 || (action === 'buy' && (shares * (outcomeData.find(o => o.outcome === selectedOutcome)?.price || 0)) > currentBalance) || (action === 'sell' && getNetPosition(market.conditionId || market.id || '', selectedOutcome) < shares)}
               className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
               data-market={market.conditionId || market.id}
             >
