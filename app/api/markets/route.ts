@@ -163,17 +163,40 @@ export async function GET(request: NextRequest) {
       return market;
     });
 
-    // Filter out expired markets, but include those with the default date
+    // Include both active and resolved markets for P&L calculation
     const now = new Date();
-    const validMarkets = allMarketsWithDefaultDate.filter((market: any) => {
+    const allMarketsWithStatus = allMarketsWithDefaultDate.map((market: any) => {
       const endDateRaw = market.endDateIso || market.end_date_iso || '';
       const endDate = new Date(endDateRaw);
-      return endDate > now;
+      const isExpired = endDate <= now;
+      
+      // Check if market has resolved outcomes (winner information)
+      const hasResolvedOutcomes = market.tokens && market.tokens.some((token: any) => token.winner !== undefined);
+      
+      // For expired markets, try to determine the winning outcome
+      let resolvedOutcome = null;
+      if (isExpired && market.tokens) {
+        const winningToken = market.tokens.find((token: any) => token.winner === true);
+        if (winningToken) {
+          resolvedOutcome = winningToken.outcome;
+        }
+      }
+      
+      return {
+        ...market,
+        isExpired,
+        hasResolvedOutcomes,
+        resolvedOutcome,
+        // For resolved markets, set outcome prices to final values (1.0 for winner, 0.0 for losers)
+        outcomePrices: isExpired && resolvedOutcome ? 
+          market.outcomes?.map((outcome: string) => outcome === resolvedOutcome ? '1.0' : '0.0') : 
+          market.outcomePrices
+      };
     });
 
-    console.log(`[DEBUG] Markets API: Total markets: ${allMarkets.length}, Valid markets: ${validMarkets.length}, Filtered out: ${allMarkets.length - validMarkets.length}`);
+    console.log(`[DEBUG] Markets API: Total markets: ${allMarkets.length}, All markets with status: ${allMarketsWithStatus.length}`);
 
-    return NextResponse.json({ markets: validMarkets, count: validMarkets.length }, {
+    return NextResponse.json({ markets: allMarketsWithStatus, count: allMarketsWithStatus.length }, {
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',

@@ -163,6 +163,19 @@ export default function OrdersModal({ orders, isOpen, onClose, onSellOrder, mark
                       <p className="text-gray-400 text-sm">
                         {order.outcome} • {order.action.toUpperCase()} • {formatDate(order.timestamp)}
                       </p>
+                      {/* Show if this is from a resolved market */}
+                      {markets && (() => {
+                        const market = markets.find(m => m.conditionId === order.marketId || m.id === order.marketId);
+                        if (market?.isExpired && market?.resolvedOutcome) {
+                          const isWinner = order.outcome === market.resolvedOutcome;
+                          return (
+                            <p className={`text-sm ${isWinner ? 'text-green-400' : 'text-red-400'}`}>
+                              {isWinner ? '✓ Won' : '✗ Lost'} • Market resolved
+                            </p>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                     <div className="flex items-center gap-2">
                       <div className={`px-3 py-1 rounded-full text-sm font-medium ${

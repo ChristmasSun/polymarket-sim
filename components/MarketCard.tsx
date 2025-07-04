@@ -140,10 +140,22 @@ export default function MarketCard({ market, onOrderPlaced, orders, currentBalan
         </h3>
         <div className="flex items-center justify-between text-sm text-gray-400">
           <span>Ends: {formatDate(market.endDateIso || market.end_date_iso || '')}</span>
-          <span className="text-xs bg-gray-700 px-2 py-1 rounded-full text-gray-300">
-            {outcomeData.length} outcomes
-          </span>
+          <div className="flex items-center gap-2">
+            {market.isExpired && (
+              <span className="text-xs bg-red-900 text-red-300 px-2 py-1 rounded-full">
+                {market.resolvedOutcome ? 'Resolved' : 'Expired'}
+              </span>
+            )}
+            <span className="text-xs bg-gray-700 px-2 py-1 rounded-full text-gray-300">
+              {outcomeData.length} outcomes
+            </span>
+          </div>
         </div>
+        {market.isExpired && market.resolvedOutcome && (
+          <div className="mt-2 text-sm">
+            <span className="text-green-400 font-medium">Winner: {market.resolvedOutcome}</span>
+          </div>
+        )}
       </div>
 
       {/* Market Description */}
@@ -159,6 +171,7 @@ export default function MarketCard({ market, onOrderPlaced, orders, currentBalan
           const position = getPosition(outcome.outcome);
           const probability = totalProbability > 0 ? (outcome.price / totalProbability * 100) : 0;
           const outcomeOrders = getOutcomeOrdersForDisplay(outcome.outcome);
+          const isWinner = market.isExpired && market.resolvedOutcome === outcome.outcome;
           
           return (
             <div 
@@ -166,13 +179,22 @@ export default function MarketCard({ market, onOrderPlaced, orders, currentBalan
               className={`p-3 rounded-xl border-2 cursor-pointer transition-colors ${
                 selectedOutcome === outcome.outcome 
                   ? 'border-blue-500 bg-blue-900/20' 
+                  : isWinner
+                  ? 'border-green-500 bg-green-900/20'
                   : 'border-gray-600 hover:border-gray-500 bg-gray-700/50'
               }`}
-              onClick={() => setSelectedOutcome(outcome.outcome)}
+              onClick={() => !market.isExpired && setSelectedOutcome(outcome.outcome)}
             >
               <div className="flex justify-between items-center mb-2">
-                <span className="font-medium text-white">{outcome.outcome}</span>
-                <span className="text-sm font-semibold text-blue-400">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-white">{outcome.outcome}</span>
+                  {isWinner && (
+                    <span className="text-xs bg-green-600 text-green-100 px-2 py-1 rounded-full">
+                      Winner
+                    </span>
+                  )}
+                </div>
+                <span className={`text-sm font-semibold ${isWinner ? 'text-green-400' : 'text-blue-400'}`}>
                   ${outcome.price.toFixed(3)}
                 </span>
               </div>
@@ -181,7 +203,7 @@ export default function MarketCard({ market, onOrderPlaced, orders, currentBalan
                 <div className="flex items-center gap-2">
                   <div className="w-16 bg-gray-600 rounded-full h-2">
                     <div 
-                      className="bg-blue-500 h-2 rounded-full" 
+                      className={`h-2 rounded-full ${isWinner ? 'bg-green-500' : 'bg-blue-500'}`}
                       style={{ width: `${probability}%` }}
                     ></div>
                   </div>
@@ -210,7 +232,7 @@ export default function MarketCard({ market, onOrderPlaced, orders, currentBalan
       </div>
 
       {/* Trading Interface */}
-      {selectedOutcome && (
+      {selectedOutcome && !market.isExpired && (
         <div className="border-t border-gray-600 pt-4">
           <div className="flex gap-2 mb-3">
             <button
@@ -291,6 +313,18 @@ export default function MarketCard({ market, onOrderPlaced, orders, currentBalan
                 Owned: {getNetPosition(market.conditionId || market.id || '', selectedOutcome)} shares
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Show message for resolved markets */}
+      {market.isExpired && (
+        <div className="border-t border-gray-600 pt-4">
+          <div className="text-center text-gray-400 text-sm">
+            {market.resolvedOutcome ? 
+              `Market resolved. Winner: ${market.resolvedOutcome}` : 
+              'Market has ended. No trading available.'
+            }
           </div>
         </div>
       )}

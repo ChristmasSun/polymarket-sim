@@ -306,7 +306,14 @@ export function useOrders() {
           if (market) {
             const outcomeIndex = market.outcomes.findIndex(o => o === order.outcome);
             if (outcomeIndex !== -1 && market.outcomePrices && market.outcomePrices[outcomeIndex]) {
-              const currentPrice = parseFloat(market.outcomePrices[outcomeIndex]);
+              let currentPrice = parseFloat(market.outcomePrices[outcomeIndex]);
+              
+              // For resolved markets, use the final outcome prices
+              if (market.isExpired && market.resolvedOutcome) {
+                // If this outcome won, price is 1.0, otherwise 0.0
+                currentPrice = order.outcome === market.resolvedOutcome ? 1.0 : 0.0;
+              }
+              
               updated = true;
               const currentValue = order.shares * currentPrice;
               const pnl = currentValue - order.totalCost;

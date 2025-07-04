@@ -32,6 +32,11 @@ export interface PolymarketMarket {
   acceptingOrders: boolean;
   acceptingOrdersTimestamp?: string;
   
+  // New fields for resolved markets
+  isExpired?: boolean;
+  hasResolvedOutcomes?: boolean;
+  resolvedOutcome?: string | null;
+  
   orderMinSize?: string;
   orderPriceMinTickSize?: string;
   minimum_order_size?: number;
