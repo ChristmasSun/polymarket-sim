@@ -63,8 +63,15 @@ export default function OrdersModal({ orders, isOpen, onClose, onSellOrder, mark
     try {
       setSellingOrderId(order.id);
       
-      // Find current price for this order
-      const market = markets.find(m => m.conditionId === order.marketId || m.id === order.marketId);
+      // Find current price for this order (use same logic as updatePnl)
+      const market = markets.find(m => 
+        m.id === order.marketId || 
+        m.conditionId === order.marketId ||
+        m.condition_id === order.marketId
+      );
+      console.log('[DEBUG] Selling order:', { orderId: order.id, marketId: order.marketId, outcome: order.outcome });
+      console.log('[DEBUG] Found market:', market ? { id: market.id, conditionId: market.conditionId, isExpired: market.isExpired, resolvedOutcome: market.resolvedOutcome } : 'NOT FOUND');
+      
       if (!market || !market.outcomes) {
         alert('Could not find current price for this order');
         return;
@@ -78,10 +85,22 @@ export default function OrdersModal({ orders, isOpen, onClose, onSellOrder, mark
       
       let currentPrice: number;
       
-      // For resolved markets, use the final outcome prices
-      if (market.isExpired && market.resolvedOutcome) {
-        // If this outcome won, price is 1.0, otherwise 0.0
-        currentPrice = order.outcome === market.resolvedOutcome ? 1.0 : 0.0;
+      // For expired markets, use the final outcome prices
+      if (market.isExpired) {
+        if (market.resolvedOutcome) {
+          // If this outcome won, price is 1.0, otherwise 0.0
+          currentPrice = order.outcome === market.resolvedOutcome ? 1.0 : 0.0;
+          console.log('[DEBUG] Using resolved market price:', { outcome: order.outcome, resolvedOutcome: market.resolvedOutcome, price: currentPrice });
+        } else {
+          // Market is expired but not yet resolved - use current prices if available, otherwise use 0.0 as fallback
+          if (market.outcomePrices && market.outcomePrices[outcomeIndex]) {
+            currentPrice = parseFloat(market.outcomePrices[outcomeIndex]);
+            console.log('[DEBUG] Using current price for expired market:', currentPrice);
+          } else {
+            currentPrice = 0.0; // Fallback for expired markets without resolution
+            console.log('[DEBUG] Using fallback price for expired market:', currentPrice);
+          }
+        }
       } else {
         // For active markets, use the current market price
         if (!market.outcomePrices || !market.outcomePrices[outcomeIndex]) {
@@ -89,6 +108,7 @@ export default function OrdersModal({ orders, isOpen, onClose, onSellOrder, mark
           return;
         }
         currentPrice = parseFloat(market.outcomePrices[outcomeIndex]);
+        console.log('[DEBUG] Using active market price:', currentPrice);
       }
       
       // Confirm the sale
