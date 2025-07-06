@@ -60,14 +60,14 @@ export default function MarketCard({ market, onOrderPlaced, orders, currentBalan
     try {
       setIsPlacingOrder(true);
       if (action === 'buy') {
-        placeOrder(
-          marketId,
-          market.question || 'Unknown Market',
-          selectedOutcome,
-          action,
-          shares,
-          price
-        );
+      placeOrder(
+        marketId,
+        market.question || 'Unknown Market',
+        selectedOutcome,
+        action,
+        shares,
+        price
+      );
       } else {
         // Use the real sellOrder handler
         await sellOrder(marketId, selectedOutcome, shares, price);
@@ -146,10 +146,10 @@ export default function MarketCard({ market, onOrderPlaced, orders, currentBalan
                 {market.resolvedOutcome ? 'Resolved' : 'Expired'}
               </span>
             )}
-            <span className="text-xs bg-gray-700 px-2 py-1 rounded-full text-gray-300">
-              {outcomeData.length} outcomes
-            </span>
-          </div>
+          <span className="text-xs bg-gray-700 px-2 py-1 rounded-full text-gray-300">
+            {outcomeData.length} outcomes
+          </span>
+        </div>
         </div>
         {market.isExpired && market.resolvedOutcome && (
           <div className="mt-2 text-sm">
@@ -187,7 +187,7 @@ export default function MarketCard({ market, onOrderPlaced, orders, currentBalan
             >
               <div className="flex justify-between items-center mb-2">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-white">{outcome.outcome}</span>
+                <span className="font-medium text-white">{outcome.outcome}</span>
                   {isWinner && (
                     <span className="text-xs bg-green-600 text-green-100 px-2 py-1 rounded-full">
                       Winner

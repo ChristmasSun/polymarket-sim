@@ -71,23 +71,73 @@ export default function OrdersModal({ orders, isOpen, onClose, onSellOrder, mark
       setSellingOrderId(order.id);
       
       // Find current price for this order (use same logic as updatePnl)
-      let market = markets.find(m => 
+      let foundMarket = markets.find(m => 
         m.id === order.marketId || 
         m.conditionId === order.marketId ||
         m.condition_id === order.marketId
       );
       
       // Fallback: if market not found by ID, try to find by question and outcome
-      if (!market) {
+      if (!foundMarket) {
         console.log('[DEBUG] Market not found by ID, trying fallback lookup by question and outcome');
-        market = markets.find(m => 
+        foundMarket = markets.find(m => 
           m.question === order.marketQuestion && 
           m.outcomes && m.outcomes.includes(order.outcome)
         );
-        if (market) {
-          console.log('[DEBUG] Found market via fallback lookup:', { id: market.id, conditionId: market.conditionId });
+        if (foundMarket) {
+          console.log('[DEBUG] Found market via fallback lookup:', { id: foundMarket.id, conditionId: foundMarket.conditionId });
         }
       }
+      
+      // Final fallback: create a virtual market for the order if it's not found
+      if (!foundMarket) {
+        console.log('[DEBUG] Market not found in current data, creating virtual market for order');
+        
+        // Determine the final outcome based on the order's current price
+        // If price is closer to 1.0, it was likely a Yes/winning outcome
+        // If price is closer to 0.0, it was likely a No/losing outcome
+        const currentPrice = order.currentPrice || order.price;
+        const isLikelyWinner = currentPrice > 0.5;
+        const finalPrice = isLikelyWinner ? 1.0 : 0.0;
+        const resolvedOutcome = isLikelyWinner ? order.outcome : null;
+        
+        console.log('[DEBUG] Order price analysis:', { 
+          currentPrice, 
+          isLikelyWinner, 
+          finalPrice, 
+          resolvedOutcome: resolvedOutcome || 'No (losing outcome)' 
+        });
+        
+        // Create a minimal market object for this order
+        foundMarket = {
+          id: order.marketId,
+          conditionId: order.marketId,
+          question: order.marketQuestion,
+          outcomes: [order.outcome],
+          outcomePrices: [finalPrice.toString()], // Use determined final price
+          isExpired: true, // Assume expired if not in current data
+          resolvedOutcome: resolvedOutcome,
+          active: false,
+          closed: true,
+          archived: true
+        } as any;
+        console.log('[DEBUG] Created virtual market:', { 
+          id: foundMarket.id, 
+          conditionId: foundMarket.conditionId, 
+          question: foundMarket.question,
+          finalPrice,
+          resolvedOutcome
+        });
+      }
+      
+      // At this point, foundMarket should definitely be defined
+      if (!foundMarket) {
+        alert('Could not find or create market data for this order. Please refresh the page and try again.');
+        return;
+      }
+      
+      const market = foundMarket;
+      
       console.log('[DEBUG] Selling order:', { orderId: order.id, marketId: order.marketId, outcome: order.outcome });
       console.log('[DEBUG] Available markets (first 3):', markets.slice(0, 3).map(m => ({ id: m.id, conditionId: m.conditionId, condition_id: m.condition_id })));
       console.log('[DEBUG] Looking for marketId:', order.marketId);
@@ -113,46 +163,46 @@ export default function OrdersModal({ orders, isOpen, onClose, onSellOrder, mark
       if (partialConditionIdMatches.length > 0) {
         console.log('[DEBUG] Partial conditionId matches:', partialConditionIdMatches.slice(0, 3).map(m => ({ id: m.id, conditionId: m.conditionId })));
       }
-      console.log('[DEBUG] Found market:', market ? { id: market.id, conditionId: market.conditionId, isExpired: market.isExpired, resolvedOutcome: market.resolvedOutcome } : 'NOT FOUND');
+      console.log('[DEBUG] Found market:', { id: market.id, conditionId: market.conditionId, isExpired: market.isExpired, resolvedOutcome: market.resolvedOutcome });
       
-      if (!market || !market.outcomes) {
-        alert('Could not find current price for this order');
-        return;
-      }
-      
-      const outcomeIndex = market.outcomes.indexOf(order.outcome);
-      if (outcomeIndex === -1) {
-        alert('Could not find current price for this outcome');
-        return;
-      }
-      
-      let currentPrice: number;
-      
-      // For expired markets, use the final outcome prices
-      if (market.isExpired) {
-        if (market.resolvedOutcome) {
-          // If this outcome won, price is 1.0, otherwise 0.0
-          currentPrice = order.outcome === market.resolvedOutcome ? 1.0 : 0.0;
-          console.log('[DEBUG] Using resolved market price:', { outcome: order.outcome, resolvedOutcome: market.resolvedOutcome, price: currentPrice });
-        } else {
-          // Market is expired but not yet resolved - use current prices if available, otherwise use 0.0 as fallback
-          if (market.outcomePrices && market.outcomePrices[outcomeIndex]) {
-            currentPrice = parseFloat(market.outcomePrices[outcomeIndex]);
-            console.log('[DEBUG] Using current price for expired market:', currentPrice);
-          } else {
-            currentPrice = 0.0; // Fallback for expired markets without resolution
-            console.log('[DEBUG] Using fallback price for expired market:', currentPrice);
-          }
-        }
-      } else {
-        // For active markets, use the current market price
-        if (!market.outcomePrices || !market.outcomePrices[outcomeIndex]) {
+              if (!market!.outcomes) {
           alert('Could not find current price for this order');
           return;
         }
-        currentPrice = parseFloat(market.outcomePrices[outcomeIndex]);
-        console.log('[DEBUG] Using active market price:', currentPrice);
-      }
+        
+        const outcomeIndex = market!.outcomes.indexOf(order.outcome);
+        if (outcomeIndex === -1) {
+          alert('Could not find current price for this outcome');
+          return;
+        }
+        
+        let currentPrice: number;
+        
+        // For expired markets, use the final outcome prices
+        if (market!.isExpired) {
+          if (market!.resolvedOutcome) {
+            // If this outcome won, price is 1.0, otherwise 0.0
+            currentPrice = order.outcome === market!.resolvedOutcome ? 1.0 : 0.0;
+            console.log('[DEBUG] Using resolved market price:', { outcome: order.outcome, resolvedOutcome: market!.resolvedOutcome, price: currentPrice });
+          } else {
+            // Market is expired but not yet resolved - use current prices if available, otherwise use 0.0 as fallback
+            if (market!.outcomePrices && market!.outcomePrices[outcomeIndex]) {
+              currentPrice = parseFloat(market!.outcomePrices[outcomeIndex]);
+              console.log('[DEBUG] Using current price for expired market:', currentPrice);
+            } else {
+              currentPrice = 0.0; // Fallback for expired markets without resolution
+              console.log('[DEBUG] Using fallback price for expired market:', currentPrice);
+            }
+          }
+        } else {
+          // For active markets, use the current market price
+          if (!market!.outcomePrices || !market!.outcomePrices[outcomeIndex]) {
+            alert('Could not find current price for this order');
+            return;
+          }
+          currentPrice = parseFloat(market!.outcomePrices[outcomeIndex]);
+          console.log('[DEBUG] Using active market price:', currentPrice);
+        }
       
       // Confirm the sale
       const pnl = ((currentPrice - order.price) * shares);

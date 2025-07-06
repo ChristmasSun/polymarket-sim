@@ -298,14 +298,14 @@ export function useOrders() {
       const updatedOrders = orderBook.orders.map(order => {
         // Only update open buy orders
         if (order.action === 'buy' && order.shares > 0) {
-          const market = markets.find(m => 
-            m.id === order.marketId || 
-            m.conditionId === order.marketId ||
-            m.condition_id === order.marketId
-          );
-          if (market) {
-            const outcomeIndex = market.outcomes.findIndex(o => o === order.outcome);
-            if (outcomeIndex !== -1 && market.outcomePrices && market.outcomePrices[outcomeIndex]) {
+        const market = markets.find(m => 
+          m.id === order.marketId || 
+          m.conditionId === order.marketId ||
+          m.condition_id === order.marketId
+        );
+        if (market) {
+          const outcomeIndex = market.outcomes.findIndex(o => o === order.outcome);
+          if (outcomeIndex !== -1 && market.outcomePrices && market.outcomePrices[outcomeIndex]) {
               let currentPrice = parseFloat(market.outcomePrices[outcomeIndex]);
               
               // For resolved markets, use the final outcome prices
@@ -314,17 +314,17 @@ export function useOrders() {
                 currentPrice = order.outcome === market.resolvedOutcome ? 1.0 : 0.0;
               }
               
-              updated = true;
-              const currentValue = order.shares * currentPrice;
-              const pnl = currentValue - order.totalCost;
-              const pnlPercentage = order.totalCost > 0 ? (pnl / order.totalCost) * 100 : 0;
-              return {
-                ...order,
-                currentPrice,
-                currentValue,
-                pnl,
-                pnlPercentage
-              };
+            updated = true;
+            const currentValue = order.shares * currentPrice;
+            const pnl = currentValue - order.totalCost;
+            const pnlPercentage = order.totalCost > 0 ? (pnl / order.totalCost) * 100 : 0;
+            return {
+              ...order,
+              currentPrice,
+              currentValue,
+              pnl,
+              pnlPercentage
+            };
             }
           }
         }
@@ -345,17 +345,17 @@ export function useOrders() {
       const totalCurrentValue = openBuys.reduce((sum, order) => sum + (order.currentValue || 0), 0);
       const totalSellProceeds = freshOrderBook.orders.filter(o => o.action === 'sell').reduce((sum, order) => sum + order.totalCost, 0);
       const realizedPnl = freshOrderBook.orders.filter(o => o.action === 'sell').reduce((sum, order) => sum + (order.pnl || 0), 0);
-      const totalPnl = totalCurrentValue - totalInvested;
-      const totalPnlPercentage = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
-      setSummary({
+        const totalPnl = totalCurrentValue - totalInvested;
+        const totalPnlPercentage = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
+        setSummary({
         totalOrders: openBuys.length,
-        totalInvested,
-        totalCurrentValue,
-        totalPnl,
+          totalInvested,
+          totalCurrentValue,
+          totalPnl,
         totalPnlPercentage,
         totalSellProceeds,
         realizedPnl
-      });
+        });
       return {
         success: true,
         orderBook: { ...freshOrderBook, orders: openBuys },
