@@ -65,7 +65,7 @@ export default function OrdersModal({ orders, isOpen, onClose, onSellOrder, mark
       
       // Find current price for this order
       const market = markets.find(m => m.conditionId === order.marketId || m.id === order.marketId);
-      if (!market || !market.outcomes || !market.outcomePrices) {
+      if (!market || !market.outcomes) {
         alert('Could not find current price for this order');
         return;
       }
@@ -76,7 +76,20 @@ export default function OrdersModal({ orders, isOpen, onClose, onSellOrder, mark
         return;
       }
       
-      const currentPrice = parseFloat(market.outcomePrices[outcomeIndex]);
+      let currentPrice: number;
+      
+      // For resolved markets, use the final outcome prices
+      if (market.isExpired && market.resolvedOutcome) {
+        // If this outcome won, price is 1.0, otherwise 0.0
+        currentPrice = order.outcome === market.resolvedOutcome ? 1.0 : 0.0;
+      } else {
+        // For active markets, use the current market price
+        if (!market.outcomePrices || !market.outcomePrices[outcomeIndex]) {
+          alert('Could not find current price for this order');
+          return;
+        }
+        currentPrice = parseFloat(market.outcomePrices[outcomeIndex]);
+      }
       
       // Confirm the sale
       const pnl = ((currentPrice - order.price) * shares);
