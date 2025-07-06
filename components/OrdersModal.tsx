@@ -58,18 +58,61 @@ export default function OrdersModal({ orders, isOpen, onClose, onSellOrder, mark
   const handleSellOrder = async (order: Order) => {
     if (!onSellOrder || !markets) return;
     
+    console.log('[DEBUG] Markets array length:', markets.length);
+    console.log('[DEBUG] Markets array type:', typeof markets);
+    if (markets.length === 0) {
+      alert('No markets data available. Please refresh the page.');
+      return;
+    }
+    
     let shares = sharesToSell[order.id];
     if (!shares || isNaN(shares) || shares < 1) shares = order.shares;
     try {
       setSellingOrderId(order.id);
       
       // Find current price for this order (use same logic as updatePnl)
-      const market = markets.find(m => 
+      let market = markets.find(m => 
         m.id === order.marketId || 
         m.conditionId === order.marketId ||
         m.condition_id === order.marketId
       );
+      
+      // Fallback: if market not found by ID, try to find by question and outcome
+      if (!market) {
+        console.log('[DEBUG] Market not found by ID, trying fallback lookup by question and outcome');
+        market = markets.find(m => 
+          m.question === order.marketQuestion && 
+          m.outcomes && m.outcomes.includes(order.outcome)
+        );
+        if (market) {
+          console.log('[DEBUG] Found market via fallback lookup:', { id: market.id, conditionId: market.conditionId });
+        }
+      }
       console.log('[DEBUG] Selling order:', { orderId: order.id, marketId: order.marketId, outcome: order.outcome });
+      console.log('[DEBUG] Available markets (first 3):', markets.slice(0, 3).map(m => ({ id: m.id, conditionId: m.conditionId, condition_id: m.condition_id })));
+      console.log('[DEBUG] Looking for marketId:', order.marketId);
+      console.log('[DEBUG] MarketId type:', typeof order.marketId);
+      console.log('[DEBUG] MarketId length:', order.marketId.length);
+      
+      // Check for exact matches
+      const exactConditionIdMatch = markets.filter(m => m.conditionId === order.marketId);
+      const exactIdMatch = markets.filter(m => m.id === order.marketId);
+      const exactCondition_idMatch = markets.filter(m => m.condition_id === order.marketId);
+      
+      console.log('[DEBUG] Exact conditionId matches:', exactConditionIdMatch.length);
+      console.log('[DEBUG] Exact id matches:', exactIdMatch.length);
+      console.log('[DEBUG] Exact condition_id matches:', exactCondition_idMatch.length);
+      
+      // Check for partial matches (in case there's a prefix/suffix issue)
+      const partialConditionIdMatches = markets.filter(m => m.conditionId && m.conditionId.includes(order.marketId));
+      const partialIdMatches = markets.filter(m => m.id && m.id.includes(order.marketId));
+      
+      console.log('[DEBUG] Partial conditionId matches:', partialConditionIdMatches.length);
+      console.log('[DEBUG] Partial id matches:', partialIdMatches.length);
+      
+      if (partialConditionIdMatches.length > 0) {
+        console.log('[DEBUG] Partial conditionId matches:', partialConditionIdMatches.slice(0, 3).map(m => ({ id: m.id, conditionId: m.conditionId })));
+      }
       console.log('[DEBUG] Found market:', market ? { id: market.id, conditionId: market.conditionId, isExpired: market.isExpired, resolvedOutcome: market.resolvedOutcome } : 'NOT FOUND');
       
       if (!market || !market.outcomes) {
