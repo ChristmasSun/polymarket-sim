@@ -122,9 +122,9 @@ export default function OrdersModal({ orders, isOpen, onClose, onSellOrder, mark
           archived: true
         } as any;
         console.log('[DEBUG] Created virtual market:', { 
-          id: foundMarket.id, 
-          conditionId: foundMarket.conditionId, 
-          question: foundMarket.question,
+          id: foundMarket!.id, 
+          conditionId: foundMarket!.conditionId, 
+          question: foundMarket!.question,
           finalPrice,
           resolvedOutcome
         });
